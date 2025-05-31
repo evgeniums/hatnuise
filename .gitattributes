@@ -1,0 +1,3 @@
+*.dat -text
+*.json -text
+*.jsonc -text
