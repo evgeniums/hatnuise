@@ -34,14 +34,19 @@ void UiseHatnBridge::exec(
         const std::string& service,
         const std::string& method,
         HATN_CLIENTAPP_NAMESPACE::Request request,
-        HATN_CLIENTAPP_NAMESPACE::Callback callback
+        HATN_CLIENTAPP_NAMESPACE::Callback callback,
+        QObject* callbackContext
     )
 {
-    QPointer<QObject> self{this};
-
-    auto cb=[callback=std::move(callback),self](const HATN_NAMESPACE::Error& ec, HATN_CLIENTAPP_NAMESPACE::Response response)
+    QPointer<QObject> ctx=callbackContext;
+    if (ctx.isNull())
     {
-        if (!self)
+        ctx=this;
+    }
+
+    auto cb=[callback=std::move(callback),ctx](const HATN_NAMESPACE::Error& ec, HATN_CLIENTAPP_NAMESPACE::Response response)
+    {
+        if (!ctx)
         {
             return;
         }
@@ -51,8 +56,15 @@ void UiseHatnBridge::exec(
             callback(ec,std::move(response));
         };
 
-        QMetaObject::invokeMethod(self,std::move(handler),Qt::QueuedConnection);
+        QMetaObject::invokeMethod(ctx,std::move(handler),Qt::QueuedConnection);
     };
+
+    m_dispatcher->exec(
+        service,
+        method,
+        std::move(request),
+        std::move(cb)
+    );
 }
 
 //---------------------------------------------------------------

@@ -38,7 +38,8 @@ class HATN_UISE_EXPORT UiseHatnBridge : public QObject
             const std::string& service,
             const std::string& method,
             HATN_CLIENTAPP_NAMESPACE::Request request,
-            HATN_CLIENTAPP_NAMESPACE::Callback callback
+            HATN_CLIENTAPP_NAMESPACE::Callback callback,
+            QObject* callbackContext=nullptr
         );
 
         HATN_CLIENTAPP_NAMESPACE::Dispatcher* dispatcher() const noexcept
