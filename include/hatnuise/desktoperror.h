@@ -35,7 +35,8 @@ struct desktopErrorT
             return msg;
         }
 
-        msg=message+": "+msg;
+        QString format{"%1: %2"};
+        msg=format.arg(message,msg);
         return msg;
     }
 };
