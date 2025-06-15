@@ -17,22 +17,31 @@ ELSE()
     SET (Qt6WidgetsTools_DIR ${QT_HOME}/lib/cmake/Qt6WidgetsTools)
 ENDIF()
 
+GET_DIRECTORY_PROPERTY(HasParent PARENT_DIRECTORY)
+IF(HasParent)
+    OPTION(HATN_UISE_DEMO "Build demo appliations for hatnuise lib" OFF)
+ELSE()
+    OPTION(HATN_UISE_DEMO "Build demo appliations for hatnuise lib" ON)
+ENDIF()
+
 FIND_PACKAGE(Qt6 COMPONENTS Core Widgets Svg REQUIRED)
 
 SET (HEADERS
     include/hatnuise/hatnuise.h
     include/hatnuise/desktoperror.h
     include/hatnuise/uisehatnbridge.h
+    include/hatnuise/objectpanel.h
 )
 
 SET (SOURCES
     src/uisehatnbridge.cpp
+    src/objectpanel.cpp
 )
 
 ADD_LIBRARY(${PROJECT_NAME} SHARED ${HEADERS} ${SOURCES})
 TARGET_COMPILE_DEFINITIONS(${PROJECT_NAME} PRIVATE -DHATN_UISE_BUILD)
 
-TARGET_LINK_LIBRARIES(${PROJECT_NAME} PUBLIC Qt6::Core Qt6::Widgets Qt6::Svg hatnclientapp)
+TARGET_LINK_LIBRARIES(${PROJECT_NAME} PUBLIC Qt6::Core Qt6::Widgets Qt6::Svg hatnclientapp uisedesktop)
 TARGET_INCLUDE_DIRECTORIES(${PROJECT_NAME} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 
 IF (INSTALL_DEV)
@@ -51,3 +60,7 @@ ENDIF(INSTALL_DEV)
 IF (INSTALL_DEV)
     INSTALL(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/include/hatnuise DESTINATION include)
 ENDIF(INSTALL_DEV)
+
+IF (HATN_UISE_DEMO)
+    ADD_SUBDIRECTORY(demo)
+ENDIF(HATN_UISE_DEMO)
