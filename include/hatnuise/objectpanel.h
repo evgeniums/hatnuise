@@ -128,6 +128,7 @@ class AbstractObjectPanel : public QObject
         {
             auto id=field.id;
             auto it=m_fields.emplace(id,std::move(field));
+            Assert(it.second,"Duplicate field in object the panel");
             doAddField(it.first->second);
         }
 
@@ -225,6 +226,8 @@ class HATN_UISE_EXPORT ObjectPanelHelper
             }
         }
 
+        //! @todo Test hatn <-> qt conversions
+
         template <typename ObjectField>
         static auto toQtType(const ObjectField& objField)
         {
@@ -238,7 +241,7 @@ class HATN_UISE_EXPORT ObjectPanelHelper
             }
             else if constexpr (HATN_DATAUNIT_NAMESPACE::types::IsString<ObjectField::typeId>.value)
             {
-                return QString::fromStdString(objField.value());
+                return QString::fromStdString(std::string(objField.value()));
             }
             else if constexpr (HATN_DATAUNIT_NAMESPACE::types::IsDouble<ObjectField::typeId>.value)
             {
@@ -266,7 +269,7 @@ class HATN_UISE_EXPORT ObjectPanelHelper
             }
             else if constexpr (ObjectField::typeId==HATN_DATAUNIT_NAMESPACE::ValueType::ObjectId)
             {
-                return objField.value().toString();
+                return QString::fromStdString(objField.value().toString());
             }
             else
             {
@@ -304,7 +307,8 @@ class HATN_UISE_EXPORT ObjectPanelHelper
             else if constexpr (ObjectField::typeId==HATN_DATAUNIT_NAMESPACE::ValueType::DateTime)
             {
                 auto v=value.toDateTime();
-                auto dt=HATN_COMMON_NAMESPACE::DateTime::fromEpochMs(v.toMSecsSinceEpoch(),v.timeZone().fixedSecondsAheadOfUtc());
+                v=v.toUTC();
+                auto dt=HATN_COMMON_NAMESPACE::DateTime::fromEpochMs(v.toMSecsSinceEpoch());
                 return dt;
             }
             else if constexpr (ObjectField::typeId==HATN_DATAUNIT_NAMESPACE::ValueType::Time)
@@ -316,7 +320,7 @@ class HATN_UISE_EXPORT ObjectPanelHelper
             else if constexpr (ObjectField::typeId==HATN_DATAUNIT_NAMESPACE::ValueType::Date)
             {
                 auto v=value.toDate();
-                QDate dt{v.year(),v.month(),v.day()};
+                HATN_COMMON_NAMESPACE::Date dt{v.year(),v.month(),v.day()};
                 return dt;
             }
             else if constexpr (std::is_same_v<typename ObjectField::type,HATN_DATAUNIT_NAMESPACE::ObjectId>)
@@ -335,10 +339,11 @@ class HATN_UISE_EXPORT ObjectPanelHelper
             }
         }
 
-        template <typename ObjectField>
-        Field makeField(const ObjectField& objField) const
+        template <typename ObjectFieldC>
+        Field makeField(const ObjectFieldC& objField) const
         {
-            return m_factory->makePanelField(objField.valueTypeId(),objField.fieldId());
+            using fieldType=typename std::decay_t<ObjectFieldC>::type;
+            return m_factory->makePanelField(fieldType::valueTypeId(),fieldType::id());
         }
 
         template <typename ObjectField>
@@ -354,11 +359,13 @@ class HATN_UISE_EXPORT ObjectPanelHelper
         template <typename ObjectField>
         void getField(const Field& field, ObjectField& objField) const
         {
+
             if (!field.widget)
             {
                 return;
             }
-            objField.set(toHatnType(objField,field.widget->variantValue()));
+            auto val=toHatnType(objField,field.widget->variantValue());
+            objField.set(std::move(val));
         }
 
         template <typename UnitTags>
@@ -389,11 +396,12 @@ class HATN_UISE_EXPORT ObjectPanelHelper
             unit->iterateConst(
                 [panel,this](const auto& field)
                 {
-                    auto panelField=panel->field(field.id());
+                    auto panelField=panel->field(field.fieldId());
                     if (panelField!=nullptr)
                     {
-                        setField(panelField->widget,field);
+                        setField(*panelField,field);
                     }
+                    return true;
                 }
             );
         }
@@ -402,13 +410,14 @@ class HATN_UISE_EXPORT ObjectPanelHelper
         void savePanel(UnitT* unit, const AbstractObjectPanel* panel) const
         {
             unit->iterate(
-                [panel,this](const auto& field)
+                [panel,this](auto& field)
                 {
-                    auto panelField=panel->field(field.id());
+                    auto panelField=panel->field(field.fieldId());
                     if (panelField!=nullptr)
                     {
-                        getField(panelField->widget,field);
+                        getField(*panelField,field);
                     }
+                    return true;
                 }
             );
         }

@@ -37,6 +37,8 @@ std::shared_ptr<ObjectPanelFieldFactory> defaultObjectPanelFieldFactory()
         return ObjectPanelField(id, new UISE_DESKTOP_NAMESPACE::EditableLabelInt());
     };
 
+    //! @todo Implement Int64, UInt32, UInt64
+
     factory->registerType(
         HATN_DATAUNIT_NAMESPACE::ValueType::Int8,
         makeInt
@@ -50,10 +52,6 @@ std::shared_ptr<ObjectPanelFieldFactory> defaultObjectPanelFieldFactory()
         makeInt
         );
     factory->registerType(
-        HATN_DATAUNIT_NAMESPACE::ValueType::Int64,
-        makeInt
-        );
-    factory->registerType(
         HATN_DATAUNIT_NAMESPACE::ValueType::UInt8,
         makeInt
         );
@@ -61,14 +59,6 @@ std::shared_ptr<ObjectPanelFieldFactory> defaultObjectPanelFieldFactory()
         HATN_DATAUNIT_NAMESPACE::ValueType::UInt16,
         makeInt
         );
-    factory->registerType(
-        HATN_DATAUNIT_NAMESPACE::ValueType::UInt32,
-        makeInt
-        );
-    factory->registerType(
-        HATN_DATAUNIT_NAMESPACE::ValueType::UInt64,
-        makeInt
-    );
 
     auto makeDouble=[](int id)
     {
