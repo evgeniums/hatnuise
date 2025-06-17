@@ -231,49 +231,57 @@ class HATN_UISE_EXPORT ObjectPanelHelper
         template <typename ObjectField>
         static auto toQtType(const ObjectField& objField)
         {
-            if constexpr (HATN_DATAUNIT_NAMESPACE::types::IsSignedInt<ObjectField::typeId>.value)
+            if constexpr (!std::is_same_v<typename ObjectField::isRepeatedType,std::false_type>)
             {
-                return static_cast<int64_t>(objField.value());
-            }
-            else if constexpr (HATN_DATAUNIT_NAMESPACE::types::IsUnsignedInt<ObjectField::typeId>.value)
-            {
-                return static_cast<uint64_t>(objField.value());
-            }
-            else if constexpr (HATN_DATAUNIT_NAMESPACE::types::IsString<ObjectField::typeId>.value)
-            {
-                return QString::fromStdString(std::string(objField.value()));
-            }
-            else if constexpr (HATN_DATAUNIT_NAMESPACE::types::IsDouble<ObjectField::typeId>.value)
-            {
-                return static_cast<double>(objField.value());
-            }
-            else if constexpr (ObjectField::typeId==HATN_DATAUNIT_NAMESPACE::ValueType::DateTime)
-            {
-                QDateTime dt;
-                const auto& fdt=objField.value();
-                QTimeZone tz(fdt.tzSecs());
-                dt.setMSecsSinceEpoch(fdt.toEpochMs());
-                return dt;
-            }
-            else if constexpr (ObjectField::typeId==HATN_DATAUNIT_NAMESPACE::ValueType::Time)
-            {
-                const auto& ftm=objField.value();
-                QTime tm{ftm.hour(),ftm.minute(),ftm.second(),ftm.millisecond()};
-                return tm;
-            }
-            else if constexpr (ObjectField::typeId==HATN_DATAUNIT_NAMESPACE::ValueType::Date)
-            {
-                const auto& fdt=objField.value();
-                QDate dt{fdt.year(),fdt.month(),fdt.day()};
-                return dt;
-            }
-            else if constexpr (ObjectField::typeId==HATN_DATAUNIT_NAMESPACE::ValueType::ObjectId)
-            {
-                return QString::fromStdString(objField.value().toString());
+                //! @todo implement array fields
+                return 0;
             }
             else
             {
-                return 0;
+                if constexpr (HATN_DATAUNIT_NAMESPACE::types::IsSignedInt<ObjectField::typeId>.value)
+                {
+                    return static_cast<int64_t>(objField.value());
+                }
+                else if constexpr (HATN_DATAUNIT_NAMESPACE::types::IsUnsignedInt<ObjectField::typeId>.value)
+                {
+                    return static_cast<uint64_t>(objField.value());
+                }
+                else if constexpr (HATN_DATAUNIT_NAMESPACE::types::IsString<ObjectField::typeId>.value)
+                {
+                    return QString::fromStdString(std::string(objField.value()));
+                }
+                else if constexpr (HATN_DATAUNIT_NAMESPACE::types::IsDouble<ObjectField::typeId>.value)
+                {
+                    return static_cast<double>(objField.value());
+                }
+                else if constexpr (ObjectField::typeId==HATN_DATAUNIT_NAMESPACE::ValueType::DateTime)
+                {
+                    QDateTime dt;
+                    const auto& fdt=objField.value();
+                    QTimeZone tz(fdt.tzSecs());
+                    dt.setMSecsSinceEpoch(fdt.toEpochMs());
+                    return dt;
+                }
+                else if constexpr (ObjectField::typeId==HATN_DATAUNIT_NAMESPACE::ValueType::Time)
+                {
+                    const auto& ftm=objField.value();
+                    QTime tm{ftm.hour(),ftm.minute(),ftm.second(),ftm.millisecond()};
+                    return tm;
+                }
+                else if constexpr (ObjectField::typeId==HATN_DATAUNIT_NAMESPACE::ValueType::Date)
+                {
+                    const auto& fdt=objField.value();
+                    QDate dt{fdt.year(),fdt.month(),fdt.day()};
+                    return dt;
+                }
+                else if constexpr (ObjectField::typeId==HATN_DATAUNIT_NAMESPACE::ValueType::ObjectId)
+                {
+                    return QString::fromStdString(objField.value().toString());
+                }
+                else
+                {
+                    return 0;
+                }
             }
         }
 
