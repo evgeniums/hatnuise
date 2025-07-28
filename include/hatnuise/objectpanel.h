@@ -331,7 +331,7 @@ class HATN_UISE_EXPORT ObjectPanelHelper
                 HATN_COMMON_NAMESPACE::Date dt{v.year(),v.month(),v.day()};
                 return dt;
             }
-            else if constexpr (std::is_same_v<typename ObjectField::type,HATN_DATAUNIT_NAMESPACE::ObjectId>)
+            else if constexpr (ObjectField::typeId==HATN_DATAUNIT_NAMESPACE::ValueType::ObjectId)
             {
                 auto v=value.toString();
                 auto oid=HATN_DATAUNIT_NAMESPACE::ObjectId::fromString(v.toStdString());
@@ -367,13 +367,19 @@ class HATN_UISE_EXPORT ObjectPanelHelper
         template <typename ObjectField>
         void getField(const Field& field, ObjectField& objField) const
         {
-
-            if (!field.widget)
+            if constexpr (std::decay_t<ObjectField>::isRepeatedType::value)
             {
-                return;
+                // skip repeated fields
             }
-            auto val=toHatnType(objField,field.widget->variantValue());
-            objField.set(std::move(val));
+            else
+            {
+                if (!field.widget)
+                {
+                    return;
+                }
+                auto val=toHatnType(objField,field.widget->variantValue());
+                objField.set(std::move(val));
+            }
         }
 
         template <typename UnitTags>
