@@ -115,7 +115,7 @@ class ObjectPanelFieldFactory
 };
 
 
-class AbstractObjectPanel : public QObject
+class HATN_UISE_EXPORT AbstractObjectPanel : public QObject
 {
     Q_OBJECT
 
@@ -161,7 +161,7 @@ class AbstractObjectPanel : public QObject
 
 //! @todo Support bool and repeated fields
 
-class ObjectPanel : public AbstractObjectPanel
+class HATN_UISE_EXPORT ObjectPanel : public AbstractObjectPanel
 {
     Q_OBJECT
 
