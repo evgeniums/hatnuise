@@ -30,11 +30,13 @@ SET (HEADERS
     include/hatnuise/hatnuise.h
     include/hatnuise/desktoperror.h
     include/hatnuise/uisehatnbridge.h
+    include/hatnuise/uisehatneventdispatcher.h
     include/hatnuise/objectpanel.h
 )
 
 SET (SOURCES
     src/uisehatnbridge.cpp
+    src/uisehatneventdispatcher.cpp
     src/objectpanel.cpp
 )
 
