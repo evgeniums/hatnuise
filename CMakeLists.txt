@@ -28,6 +28,7 @@ FIND_PACKAGE(Qt6 COMPONENTS Core Widgets Svg REQUIRED)
 
 SET (HEADERS
     include/hatnuise/hatnuise.h
+    include/hatnuise/string.h
     include/hatnuise/desktoperror.h
     include/hatnuise/uisehatnbridge.h
     include/hatnuise/uisehatneventdispatcher.h
