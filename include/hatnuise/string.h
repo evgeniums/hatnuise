@@ -31,6 +31,11 @@ struct stdToQStringT
     {
         return QString::fromUtf8(str.data(),str.size());
     }
+
+    QString operator()(std::string_view str) const
+    {
+        return QString::fromUtf8(str.data(),str.size());
+    }
 };
 constexpr stdToQStringT stdToQString{};
 
