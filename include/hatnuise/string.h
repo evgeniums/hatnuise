@@ -29,11 +29,19 @@ struct stdToQStringT
 {
     QString operator()(const std::string& str) const
     {
+        if (str.empty())
+        {
+            return QString{};
+        }
         return QString::fromUtf8(str.data(),str.size());
     }
 
     QString operator()(std::string_view str) const
     {
+        if (str.empty())
+        {
+            return QString{};
+        }
         return QString::fromUtf8(str.data(),str.size());
     }
 };
