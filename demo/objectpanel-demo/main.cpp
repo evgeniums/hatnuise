@@ -114,7 +114,8 @@ int main(int argc, char *argv[])
     auto panel1=Style::instance().widgetFactory()->makeWidget<AbstractEditablePanel>(panels);
     panels->addPanel(panel1,0,Qt::AlignTop);
     panel1->setTitle("Panel for u1");
-    auto p1=new ObjectPanel(panel1);
+    auto p1=new ObjectPanel();
+    p1->setPanel(panel1);
 
     ObjectPanelHelper panelHelper;
 

@@ -35,6 +35,7 @@
 #include <uise/desktop/editablepanel.hpp>
 
 #include <hatnuise/hatnuise.h>
+#include <hatnuise/string.h>
 
 HATN_UISE_NAMESPACE_BEGIN
 
@@ -124,6 +125,19 @@ class HATN_UISE_EXPORT AbstractObjectPanel : public QObject
         using Field=ObjectPanelField;
         using Widget=typename Field::Widget;
 
+        using QObject::QObject;
+
+        void setPanel(UISE_DESKTOP_NAMESPACE::AbstractEditablePanel* panel)
+        {
+            m_panel=panel;
+            connect(
+                panel,
+                SIGNAL(destroyed()),
+                this,
+                SLOT(deleteLater())
+            );
+        }
+
         void addField(Field field)
         {
             auto id=field.id;
@@ -152,11 +166,26 @@ class HATN_UISE_EXPORT AbstractObjectPanel : public QObject
             return nullptr;
         }
 
+        void clearAll()
+        {
+            for (auto&& it: m_fields)
+            {
+                it.second.widget.clear();
+            }
+        }
+
+        UISE_DESKTOP_NAMESPACE::AbstractEditablePanel* panel() const
+        {
+            return m_panel;
+        }
+
     protected:
 
         virtual void doAddField(Field& field) =0;
 
         std::map<int,Field> m_fields;
+
+        UISE_DESKTOP_NAMESPACE::AbstractEditablePanel* m_panel;
 };
 
 //! @todo Support bool and repeated fields
@@ -167,32 +196,15 @@ class HATN_UISE_EXPORT ObjectPanel : public AbstractObjectPanel
 
     public:
 
-        ObjectPanel(UISE_DESKTOP_NAMESPACE::AbstractEditablePanel* panel) : m_panel(panel)
-        {
-            connect(
-                panel,
-                SIGNAL(destroyed()),
-                this,
-                SLOT(deleteLater())
-                );
-        }
-
-        UISE_DESKTOP_NAMESPACE::AbstractEditablePanel* panel() const
-        {
-            return m_panel;
-        }
+        using AbstractObjectPanel::AbstractObjectPanel;
 
     protected:
 
         virtual void doAddField(Field& field) override
         {
-            auto idInPanel=m_panel->addValueWidget(field.widget);
+            auto idInPanel=panel()->addValueWidget(field.widget);
             field.idInPanel=idInPanel;
         }
-
-    private:
-
-        UISE_DESKTOP_NAMESPACE::AbstractEditablePanel* m_panel;
 };
 
 class HATN_UISE_EXPORT ObjectPanelHelper
@@ -248,7 +260,7 @@ class HATN_UISE_EXPORT ObjectPanelHelper
                 }
                 else if constexpr (HATN_DATAUNIT_NAMESPACE::types::IsString<ObjectField::typeId>.value)
                 {
-                    return QString::fromStdString(std::string(objField.value()));
+                    return stdToQString(std::string(objField.value()));
                 }
                 else if constexpr (HATN_DATAUNIT_NAMESPACE::types::IsDouble<ObjectField::typeId>.value)
                 {
@@ -276,7 +288,7 @@ class HATN_UISE_EXPORT ObjectPanelHelper
                 }
                 else if constexpr (ObjectField::typeId==HATN_DATAUNIT_NAMESPACE::ValueType::ObjectId)
                 {
-                    return QString::fromStdString(objField.value().toString());
+                    return stdToQString(objField.value().toString());
                 }
                 else
                 {
@@ -306,7 +318,7 @@ class HATN_UISE_EXPORT ObjectPanelHelper
             }
             else if constexpr (HATN_DATAUNIT_NAMESPACE::types::IsString<ObjectField::typeId>.value)
             {
-                return value.toString().toStdString();
+                return qStringToStd(value.toString());
             }
             else if constexpr (HATN_DATAUNIT_NAMESPACE::types::IsDouble<ObjectField::typeId>.value)
             {
@@ -334,7 +346,7 @@ class HATN_UISE_EXPORT ObjectPanelHelper
             else if constexpr (ObjectField::typeId==HATN_DATAUNIT_NAMESPACE::ValueType::ObjectId)
             {
                 auto v=value.toString();
-                auto oid=HATN_DATAUNIT_NAMESPACE::ObjectId::fromString(v.toStdString());
+                auto oid=HATN_DATAUNIT_NAMESPACE::ObjectId::fromString(qStringToStd(v));
                 if (!oid)
                 {
                     return oid.takeValue();
@@ -352,6 +364,13 @@ class HATN_UISE_EXPORT ObjectPanelHelper
         {
             using fieldType=typename std::decay_t<ObjectFieldC>::type;
             return m_factory->makePanelField(fieldType::valueTypeId(),fieldType::id());
+        }
+
+        template <typename ObjectFieldC>
+        Field makeField(const ObjectFieldC& objField, int explicitType) const
+        {
+            using fieldType=typename std::decay_t<ObjectFieldC>::type;
+            return m_factory->makePanelField(explicitType,fieldType::id());
         }
 
         template <typename ObjectField>
@@ -392,13 +411,24 @@ class HATN_UISE_EXPORT ObjectPanelHelper
                     const auto& objField=hana::first(x);
                     const auto& fieldTags=hana::second(x);
 
-                    auto field=makeField(objField);
+                    Field field;
+
+                    auto cfg=HDU_EXTRACT_FIELD_TAG(fieldTags,FieldConfig);
+                    if (cfg.hasProperty(UISE_DESKTOP_NAMESPACE::ValueWidgetProperty::ExplicitType))
+                    {
+                        field=makeField(objField,cfg.property(UISE_DESKTOP_NAMESPACE::ValueWidgetProperty::ExplicitType).toInt());
+                    }
+                    else
+                    {
+                        field=makeField(objField);
+                    }
+
                     if (!field.widget)
                     {
                         return;
                     }
 
-                    field.widget->setConfig(HDU_EXTRACT_FIELD_TAG(fieldTags,FieldConfig));
+                    field.widget->setConfig(std::move(cfg));
                     panel->addField(std::move(field));
                 }
             );
@@ -407,6 +437,12 @@ class HATN_UISE_EXPORT ObjectPanelHelper
         template <typename UnitT>
         void loadPanel(const UnitT* unit, AbstractObjectPanel* panel) const
         {
+            if (unit==nullptr)
+            {
+                panel->clearAll();
+                return;
+            }
+
             unit->iterateConst(
                 [panel,this](const auto& field)
                 {

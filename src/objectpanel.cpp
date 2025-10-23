@@ -14,11 +14,15 @@
   *
   */
 
+#include <hatn/common/meta/enumint.h>
 #include <uise/desktop/editablelabel.hpp>
 
 #include <hatnuise/objectpanel.h>
 
 HATN_UISE_NAMESPACE_BEGIN
+
+UISE_DESKTOP_USING
+HATN_USING
 
 //---------------------------------------------------------------
 
@@ -39,6 +43,10 @@ std::shared_ptr<ObjectPanelFieldFactory> defaultObjectPanelFieldFactory()
 
     //! @todo Implement Int64, UInt32, UInt64
 
+    factory->registerType(
+        EditableLabelType::Int,
+        makeInt
+    );
     factory->registerType(
         HATN_DATAUNIT_NAMESPACE::ValueType::Int8,
         makeInt
@@ -66,6 +74,10 @@ std::shared_ptr<ObjectPanelFieldFactory> defaultObjectPanelFieldFactory()
     };
 
     factory->registerType(
+        EditableLabelType::Double,
+        makeDouble
+    );
+    factory->registerType(
         HATN_DATAUNIT_NAMESPACE::ValueType::Float,
         makeDouble
     );
@@ -78,6 +90,18 @@ std::shared_ptr<ObjectPanelFieldFactory> defaultObjectPanelFieldFactory()
     {
         return ObjectPanelField(id, new UISE_DESKTOP_NAMESPACE::EditableLabelText());
     };
+    auto makeTextEdit=[](int id)
+    {
+        return ObjectPanelField(id, new UISE_DESKTOP_NAMESPACE::EditableLabelTextEdit());
+    };
+    factory->registerType(
+        EditableLabelType::Text,
+        makeString
+    );
+    factory->registerType(
+        EditableLabelType::TextEdit,
+        makeTextEdit
+    );
     factory->registerType(
         HATN_DATAUNIT_NAMESPACE::ValueType::String,
         makeString
@@ -88,6 +112,10 @@ std::shared_ptr<ObjectPanelFieldFactory> defaultObjectPanelFieldFactory()
         return ObjectPanelField(id, new UISE_DESKTOP_NAMESPACE::EditableLabelDate());
     };
     factory->registerType(
+        EditableLabelType::Date,
+        makeDate
+    );
+    factory->registerType(
         HATN_DATAUNIT_NAMESPACE::ValueType::Date,
         makeDate
     );
@@ -97,6 +125,10 @@ std::shared_ptr<ObjectPanelFieldFactory> defaultObjectPanelFieldFactory()
         return ObjectPanelField(id, new UISE_DESKTOP_NAMESPACE::EditableLabelDateTime());
     };
     factory->registerType(
+        EditableLabelType::DateTime,
+        makeDateTime
+    );
+    factory->registerType(
         HATN_DATAUNIT_NAMESPACE::ValueType::DateTime,
         makeDateTime
     );
@@ -105,6 +137,10 @@ std::shared_ptr<ObjectPanelFieldFactory> defaultObjectPanelFieldFactory()
     {
         return ObjectPanelField(id, new UISE_DESKTOP_NAMESPACE::EditableLabelTime());
     };
+    factory->registerType(
+        EditableLabelType::Time,
+        makeTime
+    );
     factory->registerType(
         HATN_DATAUNIT_NAMESPACE::ValueType::Time,
         makeTime
