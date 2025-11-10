@@ -17,6 +17,8 @@
 #include <QPointer>
 #include <QApplication>
 
+#include <hatn/app//appenv.h>
+
 #include <hatnuise/uisehatneventdispatcher.h>
 
 HATN_UISE_NAMESPACE_BEGIN
