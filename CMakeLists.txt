@@ -33,6 +33,8 @@ SET (HEADERS
     include/hatnuise/uisehatnbridge.h
     include/hatnuise/uisehatneventdispatcher.h
     include/hatnuise/objectpanel.h
+    include/hatnuise/datetime.h
+    include/hatnuise/uid.h
 )
 
 SET (SOURCES
@@ -44,7 +46,7 @@ SET (SOURCES
 ADD_LIBRARY(${PROJECT_NAME} SHARED ${HEADERS} ${SOURCES})
 TARGET_COMPILE_DEFINITIONS(${PROJECT_NAME} PRIVATE -DHATN_UISE_BUILD)
 
-TARGET_LINK_LIBRARIES(${PROJECT_NAME} PUBLIC Qt6::Core Qt6::Widgets hatnclientapp uisedesktop)
+TARGET_LINK_LIBRARIES(${PROJECT_NAME} PUBLIC Qt6::Core Qt6::Widgets hatnclientserver hatnclientapp uisedesktop)
 TARGET_INCLUDE_DIRECTORIES(${PROJECT_NAME} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 
 IF (INSTALL_DEV)

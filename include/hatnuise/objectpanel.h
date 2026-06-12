@@ -270,7 +270,7 @@ class HATN_UISE_EXPORT ObjectPanelHelper
                 {
                     QDateTime dt;
                     const auto& fdt=objField.value();
-                    QTimeZone tz(fdt.tzSecs());
+                    QTimeZone tz(fdt.timezoneSeconds());
                     dt.setMSecsSinceEpoch(fdt.toEpochMs());
                     return dt;
                 }

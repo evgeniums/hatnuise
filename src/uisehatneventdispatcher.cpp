@@ -45,7 +45,7 @@ size_t UiseHatnEventDispatcher::subscribe(
     }
 
     auto proxyHandler=[handler=std::move(handler),hCtx](HATN_COMMON_NAMESPACE::SharedPtr<HATN_APP_NAMESPACE::AppEnv> env,
-                                                            HATN_COMMON_NAMESPACE::SharedPtr<HATN_CLIENTAPP_NAMESPACE::Context> ctx,
+                                                            HATN_COMMON_NAMESPACE::SharedPtr<HATN_APP_NAMESPACE::Context> ctx,
                                                             std::shared_ptr<HATN_CLIENTAPP_NAMESPACE::Event> event)
     {
         if (!hCtx)

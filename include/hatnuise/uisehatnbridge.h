@@ -20,6 +20,9 @@
 #define HATNUISEHATNBRIDGE_H
 
 #include <QObject>
+#include <QPointer>
+
+#include <boost/hana.hpp>
 
 #include <hatn/clientapp/clientbridge.h>
 #include <hatnuise/hatnuise.h>
@@ -50,6 +53,42 @@ class HATN_UISE_EXPORT UiseHatnBridge : public QObject
         void setDispatcher(HATN_CLIENTAPP_NAMESPACE::Dispatcher* dispatcher)
         {
             m_dispatcher=dispatcher;
+        }
+
+        template <typename CallbackT>
+        auto guiCallback(
+                CallbackT callback,
+                QObject* callbackContext=nullptr
+            )
+        {
+            QPointer<QObject> ctx=callbackContext;
+            if (ctx.isNull())
+            {
+                ctx=this;
+            }
+
+            auto cb=[callback=std::move(callback),ctx](auto&& ...args)
+            {
+                if (!ctx)
+                {
+                    return;
+                }
+
+                auto ts=boost::hana::make_tuple(std::forward<decltype(args)>(args)...);
+                auto handler=[ts{std::move(ts)},callback=std::move(callback)]()
+                {
+                    hana::unpack(std::move(ts),
+                                 [callback{std::move(callback)}](auto&& ...args) mutable
+                                 {
+                                     callback(std::forward<decltype(args)>(args)...);
+                                 }
+                    );
+                };
+
+                QMetaObject::invokeMethod(ctx,std::move(handler),Qt::QueuedConnection);
+            };
+
+            return cb;
         }
 
     private:
