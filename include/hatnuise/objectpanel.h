@@ -298,7 +298,7 @@ class HATN_UISE_EXPORT ObjectPanelHelper
         }
 
         template <typename ObjectField>
-        static auto toHatnType(const ObjectField& objField, const QVariant& value)
+        static auto toHatnType(const ObjectField& /*objField*/, const QVariant& value)
         {
             if constexpr (HATN_DATAUNIT_NAMESPACE::types::IsInt64<ObjectField::typeId>.value)
             {
@@ -360,21 +360,21 @@ class HATN_UISE_EXPORT ObjectPanelHelper
         }
 
         template <typename ObjectFieldC>
-        Field makeField(const ObjectFieldC& objField) const
+        Field makeField(const ObjectFieldC& /*objField*/) const
         {
             using fieldType=typename std::decay_t<ObjectFieldC>::type;
             return m_factory->makePanelField(fieldType::valueTypeId(),fieldType::id());
         }
 
         template <typename ObjectFieldC>
-        Field makeField(const ObjectFieldC& objField, int explicitType) const
+        Field makeField(const ObjectFieldC& /*objField*/, int explicitType) const
         {
             using fieldType=typename std::decay_t<ObjectFieldC>::type;
             return m_factory->makePanelField(explicitType,fieldType::id());
         }
 
         template <typename ObjectField>
-        void setField(Field& field, const ObjectField& objField) const
+        static void setField(Field& field, const ObjectField& objField)
         {
             if (!field.widget)
             {
@@ -384,7 +384,7 @@ class HATN_UISE_EXPORT ObjectPanelHelper
         }
 
         template <typename ObjectField>
-        void getField(const Field& field, ObjectField& objField) const
+        static void getField(const Field& field, ObjectField& objField)
         {
             if constexpr (std::decay_t<ObjectField>::isRepeatedType::value)
             {
@@ -404,23 +404,25 @@ class HATN_UISE_EXPORT ObjectPanelHelper
         template <typename UnitTags>
         void constructPanel(const UnitTags& unitTags, AbstractObjectPanel* panel) const
         {
+            auto* factory=m_factory.get();
             hana::for_each(
                 unitTags,
-                [this,panel](const auto& x)
+                [factory,panel](const auto& x)
                 {
                     const auto& objField=hana::first(x);
                     const auto& fieldTags=hana::second(x);
+                    using fieldType=typename std::decay_t<decltype(objField)>::type;
 
                     Field field;
 
                     auto cfg=HDU_EXTRACT_FIELD_TAG(fieldTags,FieldConfig);
                     if (cfg.hasProperty(UISE_DESKTOP_NAMESPACE::ValueWidgetProperty::ExplicitType))
                     {
-                        field=makeField(objField,cfg.property(UISE_DESKTOP_NAMESPACE::ValueWidgetProperty::ExplicitType).toInt());
+                        field=factory->makePanelField(cfg.property(UISE_DESKTOP_NAMESPACE::ValueWidgetProperty::ExplicitType).toInt(),fieldType::id());
                     }
                     else
                     {
-                        field=makeField(objField);
+                        field=factory->makePanelField(fieldType::valueTypeId(),fieldType::id());
                     }
 
                     if (!field.widget)
@@ -444,7 +446,7 @@ class HATN_UISE_EXPORT ObjectPanelHelper
             }
 
             unit->iterateConst(
-                [panel,this](const auto& field)
+                [panel](const auto& field)
                 {
                     auto panelField=panel->field(field.fieldId());
                     if (panelField!=nullptr)
@@ -460,7 +462,7 @@ class HATN_UISE_EXPORT ObjectPanelHelper
         void savePanel(UnitT* unit, const AbstractObjectPanel* panel) const
         {
             unit->iterate(
-                [panel,this](auto& field)
+                [panel](auto& field)
                 {
                     auto panelField=panel->field(field.fieldId());
                     if (panelField!=nullptr)
@@ -473,7 +475,7 @@ class HATN_UISE_EXPORT ObjectPanelHelper
         }
 
         template <typename UnitT>
-        HATN_DB_NAMESPACE::update::Request getUpdateRequest(const UnitT* unit, const AbstractObjectPanel* panel) const
+        HATN_DB_NAMESPACE::update::Request getUpdateRequest(const UnitT* /*unit*/, const AbstractObjectPanel* /*panel*/) const
         {
             //! @todo critical: Implement getUpdateRequest()
             return HATN_DB_NAMESPACE::update::Request{};
