@@ -13,7 +13,6 @@
   */
 
 #include <QFrame>
-#include <QPushButton>
 #include <QTextEdit>
 #include <QScrollArea>
 #include <QApplication>
