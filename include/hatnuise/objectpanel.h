@@ -166,11 +166,24 @@ class HATN_UISE_EXPORT AbstractObjectPanel : public QObject
             return nullptr;
         }
 
+        /**
+         * @brief Reset every field's widget to its empty state.
+         *
+         * NOTE this used to be `it.second.widget.clear()`, which clears the QPointer - i.e. it
+         * made the panel FORGET its widgets instead of clearing them. Two things went wrong with
+         * that: the displayed values stayed on screen (loadPanel(nullptr) is exactly the "show
+         * nothing" path, so a section cleared server-side kept rendering its old value), and the
+         * field was detached for good, so every later loadPanel()/savePanel() skipped it - both
+         * setField() and getField() bail out on a null widget. Clear the widget, keep the pointer.
+         */
         void clearAll()
         {
             for (auto&& it: m_fields)
             {
-                it.second.widget.clear();
+                if (!it.second.widget.isNull())
+                {
+                    it.second.widget->clear();
+                }
             }
         }
 
