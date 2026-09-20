@@ -48,6 +48,16 @@ directory: `~/projects/uise/builds/hatnuise-mediatests`. It does not use hatn's 
 its build directory on every run and cannot limit the build to media's test targets. The default module is
 `media` (media plus its five dependencies); `--module all` builds every hatn module instead.
 
+`--module mediatests` runs the voice message tests over a real `crypt::CryptFile` (record, play, seek,
+crop, and the pause that closes the file and reopens it in append mode). `mediatests` is a module of
+tests only, in hatn, so that media itself does not depend on crypt. Its tests load the openssl crypto
+plugin, so `hatn_plugins` defaults to `openssl` for it; a run needs the codec as well to exercise
+anything but the append-mode cases.
+
+After ctest the script prints, per test case, its time and every `BOOST_TEST_MESSAGE`, warning and error,
+read from `<build>/test/result-xml/*.xml`: hatn's ctest registration logs only test suites to the console, so a
+passing run otherwise shows nothing but its status. `--quiet` turns that off.
+
 ## Fallback if the superbuild's `media` step fails
 
 `DEV_MODULE=clientapp` does not include `media`, so the superbuild adds it itself with

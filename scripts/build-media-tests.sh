@@ -1,16 +1,22 @@
 #!/bin/bash
 
-# Builds and runs the tests of hatn's `media` module through hatn's own CMake and ctest. Optional and
-# separate from build-hatnuise.sh, because hatn builds its tests only when it is the master
-# (top-level) project. See scripts/README.md.
+# Builds and runs the tests of hatn's `media` module, or of `mediatests`, through hatn's own CMake and
+# ctest. Optional and separate from build-hatnuise.sh, because hatn builds its tests only when it is the
+# master (top-level) project. See scripts/README.md.
 #
 # Usage: build-media-tests.sh [debug|release|minsize_release] [options]
 #
 #   --module <name>     hatn DEV_MODULE (default media; `all` builds every hatn module, see below).
+#                       `mediatests` runs the voice message tests over a real crypt::CryptFile: they
+#                       need the openssl crypt plugin, and hatn_plugins defaults to just that then.
 #   --require-codec     fail unless libopus and libogg are installed in the deps root. Without them
 #                       only TestPcmRing and TestWaveform have any content: the other suites
 #                       compile to empty shells and "pass".
 #   --no-run            configure and build, do not run ctest
+#   --quiet             after the run, do not print the messages and times from the Boost.Test logs.
+#                       hatn's ctest registration logs only test suites to the console, so by default the
+#                       script reads <build>/test/result-xml/*.xml and prints every BOOST_TEST_MESSAGE, error
+#                       and the time of each test case of the suites it ran.
 #   --clean             delete the build directory first
 #   --jobs <n>          parallel jobs (default: $build_workers, else 6)
 #   --dry-run           resolve and print everything, run nothing (also: PRINT_ONLY=1)
@@ -37,6 +43,57 @@ usage()
     sed -n '3,/^set -euo/p' "${BASH_SOURCE[0]}" | sed -e '/^set -euo/d' -e 's/^# \{0,1\}//'
 }
 
+# What ctest does not show: hatn logs only test suites to the console but everything to an XML file per
+# test executable. Print, per test case, its time and every message, warning and error in it.
+# hatn also runs its tests with --result_code=no, so the exit status of a test is always 0 and ctest
+# reports "Passed" for a run that failed every check: the errors in these logs are the only verdict.
+# Counts the executables whose log holds an error (or is missing) in log_failures.
+print_test_log()
+{
+    local xml_dir="$1"
+    local quiet="$2"
+    shift 2
+    local target
+    for target in "$@"
+    do
+        if [ -f "$xml_dir/$target.xml" ]
+        then
+            "${PYTHON_EXE:-python3}" - "$xml_dir/$target.xml" "$quiet" <<'PYEOF' || log_failures=$((log_failures+1))
+import sys
+import xml.etree.ElementTree as ET
+
+path = sys.argv[1]
+quiet = sys.argv[2] == "1"
+try:
+    root = ET.parse(path).getroot()
+except ET.ParseError as e:
+    print("  (cannot read %s: %s)" % (path, e))
+    sys.exit(1)
+
+failed = 0
+if not quiet:
+    print("")
+    print("Log of %s" % path.rsplit("/", 1)[-1])
+for case in root.iter("TestCase"):
+    micro = case.findtext("TestingTime")
+    ms = ("%.0f ms" % (int(micro) / 1000.0)) if micro and micro.isdigit() else "?"
+    if not quiet:
+        print("  %-40s %s" % (case.get("name"), ms))
+    for element in case:
+        bad = element.tag in ("Error", "Exception", "FatalError")
+        failed += 1 if bad else 0
+        if bad or (not quiet and element.tag in ("Message", "Warning")):
+            text = (element.text or "").strip()
+            print("      [%s] %s%s" % (element.tag.lower(), "" if not quiet else case.get("name") + ": ", text))
+sys.exit(1 if failed else 0)
+PYEOF
+        else
+            note "  (no log for $target: $xml_dir/$target.xml)"
+            log_failures=$((log_failures+1))
+        fi
+    done
+}
+
 # ---------------------------------------------------------------------------------------------
 # Arguments
 
@@ -52,6 +109,8 @@ jobs_arg=""
 require_codec=0
 do_clean=0
 do_run=1
+show_log=1
+log_failures=0
 
 while [ $# -gt 0 ]
 do
@@ -68,6 +127,7 @@ do
             ;;
         --require-codec) require_codec=1; shift ;;
         --no-run) do_run=0; shift ;;
+        --quiet) show_log=0; shift ;;
         --clean) do_clean=1; shift ;;
         --dry-run) dry_run=1; shift ;;
         -h|--help) usage; exit 0 ;;
@@ -83,10 +143,24 @@ done
 # ---------------------------------------------------------------------------------------------
 # Resolve
 
+module="${module_arg:-media}"
+
+# The module whose test/ directory is read: `all` builds every module but is used for media's tests.
+tests_module="$module"
+if [ "$module" = "all" ]
+then
+    tests_module="media"
+fi
+
+# mediatests reaches no database, so the rocksdb plugin is not needed; it does need openssl.
+if [ "$tests_module" = "mediatests" ]
+then
+    hatn_plugins="${hatn_plugins:-openssl}"
+fi
+
 resolve_hatn "$build_arg" "$jobs_arg" debug
 
 uise_src=""
-module="${module_arg:-media}"
 
 working_dir_root="${hatnuise_mediatests_dir:-$hatnuise_root/../builds/hatnuise-mediatests}"
 working_dir_root="$(abs_path_new "$working_dir_root")"
@@ -102,15 +176,15 @@ media_suites=()
 media_targets=()
 suites_text=""
 targets_text=""
-if [ -d "$hatn_src/media/test" ]
+if [ -d "$hatn_src/$tests_module/test" ]
 then
-    for test_source in "$hatn_src"/media/test/*.cpp
+    for test_source in "$hatn_src/$tests_module"/test/*.cpp
     do
         suite=""
         suite="$(grep -h -o -E 'BOOST_(AUTO|FIXTURE)_TEST_SUITE\( *[A-Za-z_0-9]+' "$test_source" | head -n 1 | sed -E 's/^.*\( *//')" || true
         if [ -n "$suite" ]
         then
-            target="media$(echo "$suite" | tr '[:upper:]' '[:lower:]')"
+            target="$tests_module$(echo "$suite" | tr '[:upper:]' '[:lower:]')"
             media_suites+=("$suite")
             media_targets+=("$target")
             suites_text="$suites_text $suite"
@@ -142,12 +216,12 @@ note "  test targets         :${targets_text:- (none found)}"
 
 preflight_hatn
 [ -f "$hatn_src/media/CMakeLists.txt" ] || die "this hatn tree has no media module ($hatn_src/media): is hatn_src the canonical tree?"
-[ -f "$hatn_src/media/test/test.cmake" ] || die "hatn media has no tests registered: $hatn_src/media/test/test.cmake"
+[ -f "$hatn_src/$tests_module/test/test.cmake" ] || die "hatn $tests_module has no tests registered: $hatn_src/$tests_module/test/test.cmake"
 if [ "$module" != "all" ]
 then
     [ -f "$hatn_src/$module/depends.cmake" ] || die "hatn has no module '$module' (no $hatn_src/$module/depends.cmake)"
 fi
-[ ${#media_targets[@]} -gt 0 ] || die "found no BOOST_*_TEST_SUITE in $hatn_src/media/test/*.cpp"
+[ ${#media_targets[@]} -gt 0 ] || die "found no BOOST_*_TEST_SUITE in $hatn_src/$tests_module/test/*.cpp"
 
 guard_working_dir "$working_dir_root"
 [ -d "$(dirname "$working_dir_root")" ] || die "the parent of the working directory does not exist: $(dirname "$working_dir_root") (set hatnuise_mediatests_dir)"
@@ -194,11 +268,37 @@ then
 fi
 run mkdir -p "$build_dir"
 run cmake "${cmake_args[@]}"
-run cmake --build "$build_dir" --target "${media_targets[@]}" -j"$build_workers"
+# hatn copies the crypto plugin next to the test executables in a post-build step of its umbrella
+# target hatnlibstest, which building the executables alone does not run.
+build_targets=("${media_targets[@]}")
+if [ "$tests_module" = "mediatests" ]
+then
+    build_targets+=("hatnlibstest")
+fi
+run cmake --build "$build_dir" --target "${build_targets[@]}" -j"$build_workers"
 if [ "$do_run" = 1 ]
 then
     run mkdir -p "$result_xml_dir"
-    run ctest --test-dir "$build_dir/test" -C "$build_type" -L SUITE -R "$suite_regex" --output-on-failure
+    ctest_status=0
+    run ctest --test-dir "$build_dir/test" -C "$build_type" -L SUITE -R "$suite_regex" --output-on-failure || ctest_status=$?
+
+    if [ "$dry_run" = 0 ]
+    then
+        log_quiet=0
+        if [ "$show_log" = 0 ]
+        then
+            log_quiet=1
+        fi
+        print_test_log "$result_xml_dir" "$log_quiet" "${media_targets[@]}"
+    fi
+    if [ "$ctest_status" != 0 ]
+    then
+        exit "$ctest_status"
+    fi
+    if [ "$log_failures" != 0 ]
+    then
+        die "ctest said Passed, but the Boost.Test log of $log_failures test executable(s) holds errors (see above). hatn runs its tests with --result_code=no."
+    fi
 fi
 
 note ""
