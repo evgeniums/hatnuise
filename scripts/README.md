@@ -26,7 +26,9 @@ cd ~/projects/uise
 It exports the environment (`QT_HOME`, `deps_universal_root`, `boost_version`, `build_workers`, ...) and
 hands over to `build-hatnuise.sh`. Everything is written under
 `~/projects/uise/builds/hatnuise/{builds,install}/<compiler>-<module>-<debug|release>`; the demo ends up in
-`builds/<configuration>/hatnuise/demo/objectpanel-demo/objectpanel-demo`.
+`builds/<configuration>/hatnuise/demo/objectpanel-demo/objectpanel-demo`. The voice demo, built only where
+the voice glue is (hatn media and Qt Multimedia), is beside it in
+`builds/<configuration>/hatnuise/demo/voicemessage-demo/voicemessage-demo`; the script prints both paths.
 
 ## The Ogg/Opus codec
 

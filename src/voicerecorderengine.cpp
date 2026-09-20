@@ -17,6 +17,7 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
+#include <array>
 #include <cmath>
 #include <cstring>
 #include <limits>
@@ -41,6 +42,7 @@
 #include <hatn/media/media.h>
 #include <hatn/media/mediaerror.h>
 #include <hatn/media/audioformat.h>
+#include <hatn/media/oggopusreader.h>
 #include <hatn/media/pcmring.h>
 #include <hatn/media/voicecrop.h>
 #include <hatn/media/voicerecorder.h>
@@ -293,6 +295,14 @@ class VoiceRecorderEngine_p
         //! Recording -> Paused, all of it, see the plan of it in the body. False if it failed.
         bool doPause();
         bool doResume(QString& error);
+
+        /**
+         * Before a paused recording goes on: if the crop handles keep only part of it, that part becomes
+         * the recording and the rest is thrown away. True when it is done or there was nothing to do.
+         * On false `error` is the reason and the recording is as it was, or is empty when the recording
+         * was lost on the way and the engine is Failed already.
+         */
+        bool trimToCrop(QString& error);
         void pushPausedToDialog();
 
         void onGuiTick();
@@ -303,6 +313,20 @@ class VoiceRecorderEngine_p
         void stopPreListen();
         void onPreListenState(VoicePlaybackEngine::State newState);
         void seekFraction(qreal fraction);
+
+        /**
+         * The part of the recording that the crop handles of the dialog keep, in milliseconds of `totalMs`.
+         * The whole of it when there is no dialog, or when the handles leave nothing.
+         */
+        void cropRangeMs(qint64 totalMs, qint64& startMs, qint64& endMs) const;
+
+        /**
+         * Listening is limited to the part that is kept. Past its end the pre-listen is paused, as at
+         * the end of the message, and goes back to the start of the range. With `checkStart` a position
+         * before the range is moved into it: that is for a handle that was dragged over the position,
+         * not for the ticks of the position, which may still show where a seek came from.
+         */
+        void keepListeningInsideCrop(qint64 positionMs, bool checkStart);
 
         void shutdown();
 };
@@ -664,6 +688,152 @@ bool VoiceRecorderEngine_p::doPause()
 
 //---------------------------------------------------------------
 
+bool VoiceRecorderEngine_p::trimToCrop(QString& error)
+{
+    // nothing to do without a dialog to say what is kept, or when the handles keep all of it
+    qint64 startMs=0;
+    qint64 endMs=0;
+    cropRangeMs(dialogTotalMs,startMs,endMs);
+    if (!dialog || (startMs<=0 && endMs>=dialogTotalMs))
+    {
+        return true;
+    }
+    const auto startFraction=std::clamp<qreal>(dialog->cropStart(),0.0,1.0);
+    const auto endFraction=std::clamp<qreal>(dialog->cropEnd(),0.0,1.0);
+
+    // ---- 1. What is kept, decoded, while the recording is still whole: whatever fails here costs nothing.
+    if (!readFactory)
+    {
+        error=QStringLiteral("this recording cannot be trimmed: no read handle can be made");
+        return false;
+    }
+    auto handle=readFactory();
+    if (!handle)
+    {
+        error=QStringLiteral("no read handle could be made for the recording");
+        return false;
+    }
+    auto ec=handle->open(pathUtf8,common::File::Mode::read);
+    if (ec)
+    {
+        error=errorText(ec);
+        return false;
+    }
+
+    std::vector<int16_t> pcm;
+    {
+        media::OggOpusReader reader;
+        ec=reader.open(*handle);
+        if (!ec)
+        {
+            const auto total=reader.totalFrames();
+            const auto startFrame=static_cast<uint64_t>(std::llround(startFraction*static_cast<qreal>(total)));
+            const auto endFrame=endFraction>=1.0
+                                    ? total
+                                    : static_cast<uint64_t>(std::llround(endFraction*static_cast<qreal>(total)));
+            if (startFrame>=endFrame || startFrame>=total)
+            {
+                ec=media::mediaError(media::MediaError::INVALID_ARGUMENT);
+            }
+            else
+            {
+                ec=reader.seek(startFrame);
+                const auto wanted=endFrame-startFrame;
+                pcm.reserve(static_cast<size_t>(wanted));
+                std::array<int16_t,media::VoiceFrameSamples> buffer;
+                while (!ec && pcm.size()<wanted)
+                {
+                    const auto want=static_cast<size_t>(std::min<uint64_t>(buffer.size(),wanted-pcm.size()));
+                    size_t got=0;
+                    ec=reader.read(buffer.data(),want,got);
+                    if (ec || got==0)
+                    {
+                        // the file may end before its own length said it would
+                        break;
+                    }
+                    pcm.insert(pcm.end(),buffer.begin(),buffer.begin()+static_cast<std::ptrdiff_t>(got));
+                }
+            }
+        }
+        reader.close();
+    }
+    common::Error closeError;
+    handle->close(closeError);
+    if (ec)
+    {
+        error=errorText(ec);
+        return false;
+    }
+    if (pcm.empty())
+    {
+        error=QStringLiteral("nothing is left of the recording between the crop handles");
+        return false;
+    }
+
+    // ---- 2. The recording is replaced: the same file object is opened again for writing, which starts it
+    // over (a CryptFile too), and the part that is kept is encoded into it as the first thing that is
+    // recorded, by a recorder of its own. From here a failure is a failure of the recording.
+    error.clear();
+    if (recorder)
+    {
+        // touches no file
+        recorder->cancel();
+    }
+    ec=file->open(pathUtf8,common::File::Mode::write);
+    if (ec)
+    {
+        enterFailed(errorText(ec));
+        return false;
+    }
+    recorder=std::make_unique<media::VoiceRecorder>(config);
+    waveformRing=std::make_unique<media::PcmRing>(WaveformRingFrames);
+    waveform.reset();
+    ec=recorder->start(*file);
+    if (ec)
+    {
+        enterFailed(errorText(ec));
+        return false;
+    }
+
+    // as cropVoice() does it: the ring is far larger than a chunk and process() empties it every time
+    size_t offset=0;
+    while (offset<pcm.size())
+    {
+        const auto frames=std::min<size_t>(media::VoiceFrameSamples,pcm.size()-offset);
+        if (recorder->pushPcm(pcm.data()+offset,frames)!=frames)
+        {
+            enterFailed(QStringLiteral("the recorder did not take the part that is kept"));
+            return false;
+        }
+        waveform.add(pcm.data()+offset,frames);
+        ec=recorder->process();
+        if (ec)
+        {
+            enterFailed(errorText(ec));
+            return false;
+        }
+        offset+=frames;
+    }
+
+    // back to what a paused recording is: flushed, and the file closed
+    ec=recorder->pause();
+    if (!ec)
+    {
+        ec=closeFile();
+    }
+    if (ec)
+    {
+        enterFailed(errorText(ec));
+        return false;
+    }
+
+    ++generation;
+    pushPausedToDialog();
+    return true;
+}
+
+//---------------------------------------------------------------
+
 bool VoiceRecorderEngine_p::doResume(QString& error)
 {
     if (state!=State::Paused && state!=State::Listening)
@@ -675,6 +845,12 @@ bool VoiceRecorderEngine_p::doResume(QString& error)
     // never a writer and a reader of one file at once
     stopPreListen();
     setState(State::Paused);
+
+    // The recording goes on from the end of the part that is kept, and that part only.
+    if (!trimToCrop(error))
+    {
+        return false;
+    }
 
     if (recorder->limitReached())
     {
@@ -771,6 +947,7 @@ bool VoiceRecorderEngine_p::ensurePreListen(QString& error)
             {
                 dialog->setPlaybackMs(ms);
             }
+            keepListeningInsideCrop(ms,false);
         });
         QObject::connect(preListen.get(),&VoicePlaybackEngine::stateChanged,self,[this](VoicePlaybackEngine::State newState)
         {
@@ -851,7 +1028,64 @@ void VoiceRecorderEngine_p::seekFraction(qreal fraction)
         }
         return;
     }
-    preListen->seekMs(fractionToMs(fraction,dialogTotalMs));
+    // only what is kept can be listened to, so a seek outside the range lands on its edge
+    qint64 startMs=0;
+    qint64 endMs=0;
+    cropRangeMs(dialogTotalMs,startMs,endMs);
+    preListen->seekMs(std::clamp<qint64>(fractionToMs(fraction,dialogTotalMs),startMs,std::max(startMs,endMs-1)));
+}
+
+//---------------------------------------------------------------
+
+void VoiceRecorderEngine_p::cropRangeMs(qint64 totalMs, qint64& startMs, qint64& endMs) const
+{
+    startMs=0;
+    endMs=totalMs;
+    if (!dialog)
+    {
+        return;
+    }
+
+    const auto start=fractionToMs(dialog->cropStart(),totalMs);
+    const auto end=fractionToMs(dialog->cropEnd(),totalMs);
+    if (end>start)
+    {
+        startMs=start;
+        endMs=end;
+    }
+}
+
+//---------------------------------------------------------------
+
+void VoiceRecorderEngine_p::keepListeningInsideCrop(qint64 positionMs, bool checkStart)
+{
+    if (state!=State::Listening || !preListen)
+    {
+        return;
+    }
+
+    qint64 startMs=0;
+    qint64 endMs=0;
+    cropRangeMs(dialogTotalMs,startMs,endMs);
+
+    if (endMs<dialogTotalMs && positionMs>=endMs)
+    {
+        // The state goes first: pause() and seekMs() of the pre-listen report a position, and that
+        // report comes back here.
+        setState(State::Paused);
+        preListen->pause();
+        preListen->seekMs(startMs);
+        syncDialogState(Dialog::State::Paused);
+        if (dialog)
+        {
+            dialog->setPlaybackMs(startMs);
+        }
+        emit self->preListenEnded();
+    }
+    else if (checkStart && positionMs<startMs)
+    {
+        preListen->seekMs(startMs);
+    }
 }
 
 //---------------------------------------------------------------
@@ -1117,7 +1351,10 @@ void VoiceRecorderEngine::resume()
     {
         p.syncDialogState(Dialog::State::Paused);
     }
-    p.report(error);
+    if (!error.isEmpty())
+    {
+        p.report(error);
+    }
 }
 
 //---------------------------------------------------------------
@@ -1144,6 +1381,18 @@ void VoiceRecorderEngine::startPreListen()
             p.report(error);
         }
         return;
+    }
+
+    // Only the part that is kept is listened to: from its start, unless the position is inside it already.
+    // The dialog is told the playable length below, and the fractions of its handles are of that one.
+    // A seek before play() also works on a message that has ended: it is what clears the ended state.
+    qint64 startMs=0;
+    qint64 endMs=0;
+    p.cropRangeMs(p.preListen->durationMs(),startMs,endMs);
+    const auto position=p.preListen->positionMs();
+    if (position<startMs || position>=endMs)
+    {
+        p.preListen->seekMs(startMs);
     }
 
     p.preListen->play();
@@ -1200,7 +1449,12 @@ void VoiceRecorderEngine::seekPreListenMs(qint64 ms)
         }
         return;
     }
-    p.preListen->seekMs(ms);
+
+    // outside the part that is kept there is nothing to listen to: the seek lands on its edge
+    qint64 startMs=0;
+    qint64 endMs=0;
+    p.cropRangeMs(p.state==State::Listening ? p.dialogTotalMs : p.preListen->durationMs(),startMs,endMs);
+    p.preListen->seekMs(std::clamp<qint64>(ms,startMs,std::max(startMs,endMs-1)));
 }
 
 //---------------------------------------------------------------
@@ -1335,8 +1589,9 @@ void VoiceRecorderEngine::attachDialog(UISE_DESKTOP_NAMESPACE::AbstractVoiceReco
     p.dialog=dialog;
 
     // The dialog has moved itself to the next state before it emits, so these only follow. There is no
-    // connection for pinned(), the recording runs since start(), and none for cropChanged(), the range
-    // arrives with sendRequested().
+    // connection for pinned(), the recording runs since start(). The range of the crop handles is read
+    // from the dialog when it is needed, the final one arrives with sendRequested(); cropChanged() is
+    // followed only to keep a pre-listen that is playing inside a range that has just moved.
     auto& connections=p.dialogConnections;
     connections.push_back(QObject::connect(dialog,&Dialog::pauseRequested,this,[this]()
     {
@@ -1365,6 +1620,14 @@ void VoiceRecorderEngine::attachDialog(UISE_DESKTOP_NAMESPACE::AbstractVoiceReco
     connections.push_back(QObject::connect(dialog,&Dialog::seekRequested,this,[this](qreal fraction)
     {
         pimpl->seekFraction(fraction);
+    }));
+    connections.push_back(QObject::connect(dialog,&Dialog::cropChanged,this,[this](qreal,qreal)
+    {
+        auto& impl=*pimpl;
+        if (impl.state==State::Listening && impl.preListen)
+        {
+            impl.keepListeningInsideCrop(impl.preListen->positionMs(),true);
+        }
     }));
 }
 

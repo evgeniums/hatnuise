@@ -128,6 +128,7 @@ configuration="$compiler-$module-$build"
 build_dir="$project_working_dir/builds/$configuration"
 install_prefix="${hatnuise_install_prefix:-$project_working_dir/install/$configuration}"
 demo_binary="$build_dir/hatnuise/demo/objectpanel-demo/objectpanel-demo"
+voice_demo_binary="$build_dir/hatnuise/demo/voicemessage-demo/voicemessage-demo"
 
 media_word=OFF
 if [ "$with_media" = 1 ]
@@ -267,6 +268,13 @@ else
             note "  objectpanel-demo: $demo_binary"
         else
             note "  expected the demo at $demo_binary but it is not there"
+        fi
+        # built only with the voice glue (hatn media and Qt Multimedia), so its absence is not an error
+        if [ -x "$voice_demo_binary" ]
+        then
+            note "  voicemessage-demo: $voice_demo_binary"
+        else
+            note "  voicemessage-demo was not built: it needs hatn media and Qt Multimedia (see 'voice message glue disabled' in the configure output)"
         fi
     fi
 fi

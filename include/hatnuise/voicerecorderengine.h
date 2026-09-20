@@ -72,7 +72,10 @@ using VoiceFileFactory=std::function<std::shared_ptr<hatn::common::File>()>;
  * THE FILE. The engine records into a File that the caller has opened (write_new, at 0; a plain
  * file, or a crypt::CryptFile to record encrypted straight to disk). While the recording is paused
  * that file is CLOSED, and the engine reopens the same object in append mode to go on or to finish, so
- * that an encrypted file is never written and read at once. The pre-listen reads through a second
+ * that an encrypted file is never written and read at once. To go on from a cropped part it opens the
+ * same object with Mode::write instead, which starts the file over, so a CryptFile has to keep the
+ * settings of its container (the key derivation, the salt) from one open to the next; see resume().
+ * The pre-listen reads through a second
  * handle, which the caller's VoiceFileFactory makes: only the caller knows the keys. Because of this
  * the caller must not touch the file while the engine has it, and it is closed whenever the engine
  * is Paused, Listening, Finished, Cancelled or Failed. It is never deleted by the engine.
@@ -182,16 +185,36 @@ class HATN_UISE_EXPORT VoiceRecorderEngine : public QObject
         //! Recording -> Paused: the microphone is closed, the file is closed, the waveform is ready.
         void pause();
 
-        //! Paused -> Recording. Not possible once limitReached() was emitted.
+        /**
+         * @brief Paused -> Recording. Not possible once limitReached() was emitted.
+         *
+         * When the crop handles of the attached dialog keep only part of the recording, the recording
+         * goes on from the end of that part and that part only: what the handles cut off is thrown
+         * away first. For that the part is decoded, the same file is written anew and the part is
+         * encoded into it again, one more lossy generation as with cropRecording(), and the dialog is
+         * given the new length, the new waveform and whole-message handles, as after a pause. It
+         * happens on the calling thread and takes time in proportion to the length that is kept.
+         * A failure before the file is touched leaves the recording as it was, Paused, with the reason in
+         * errorOccurred(). After that the recording is lost and the engine is Failed. Without a dialog
+         * nothing is cut off.
+         */
         void resume();
 
-        //! Paused -> Listening: play what has been recorded so far, from where the last seek left it.
+        /**
+         * @brief Paused -> Listening: play what has been recorded so far, from where the last seek left it.
+         *
+         * Only the part that the crop handles of the attached dialog keep is played: from the start of it
+         * unless the position is inside it, and at its end the pre-listen is paused again and
+         * preListenEnded() is emitted, as at the end of the message. A seek outside the part lands on its
+         * edge. The end is watched by the ticks of the position, so it can be overshot by a few tens of
+         * milliseconds. Without a dialog the whole recording is played.
+         */
         void startPreListen();
 
         //! Listening -> Paused.
         void pausePreListen();
 
-        //! Move the pre-listen to a position of the recording, at rest or while it plays.
+        //! Move the pre-listen to a position of the recording, at rest or while it plays, within the part that is kept.
         void seekPreListenMs(qint64 ms);
 
         /**
