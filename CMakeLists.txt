@@ -35,7 +35,8 @@ OPTION(HATN_UISE_VOICE "Build the voice message glue of hatnuise (needs hatnmedi
 SET (HATNUISE_VOICE_ENABLED OFF)
 IF (HATN_UISE_VOICE)
     IF (TARGET hatnmedia AND UISE_DESKTOP_MULTIMEDIA)
-        FIND_PACKAGE(Qt6 COMPONENTS Multimedia REQUIRED)
+        # 6.5 is the first Qt with QMicrophonePermission, which the recorder uses
+        FIND_PACKAGE(Qt6 6.5 COMPONENTS Multimedia REQUIRED)
         SET (HATNUISE_VOICE_ENABLED ON)
     ELSE ()
         MESSAGE(STATUS "hatnuise: voice message glue disabled, it needs the hatnmedia target and UISE_DESKTOP_MULTIMEDIA (currently '${UISE_DESKTOP_MULTIMEDIA}')")
@@ -62,9 +63,12 @@ SET (SOURCES
 IF (HATNUISE_VOICE_ENABLED)
     LIST (APPEND HEADERS
         include/hatnuise/voiceplaybackengine.h
+        include/hatnuise/voicerecordingresult.h
+        include/hatnuise/voicerecorderengine.h
     )
     LIST (APPEND SOURCES
         src/voiceplaybackengine.cpp
+        src/voicerecorderengine.cpp
     )
 ENDIF ()
 
