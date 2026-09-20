@@ -26,6 +26,22 @@ ENDIF()
 
 FIND_PACKAGE(Qt6 COMPONENTS Core Widgets REQUIRED)
 
+# Voice messages: glue over hatn media (hatnmedia) and Qt Multimedia. Both are optional. hatnmedia
+# exists only where the parent project built the hatn media module, and Qt Multimedia only where
+# uise-desktop was built with UISE_DESKTOP_MULTIMEDIA. When either is missing nothing below is
+# touched: no extra find_package, no extra source, no compile definition. That is the case for a
+# hatn without the media module, which this tree can be built against.
+OPTION(HATN_UISE_VOICE "Build the voice message glue of hatnuise (needs hatnmedia and Qt Multimedia)" ON)
+SET (HATNUISE_VOICE_ENABLED OFF)
+IF (HATN_UISE_VOICE)
+    IF (TARGET hatnmedia AND UISE_DESKTOP_MULTIMEDIA)
+        FIND_PACKAGE(Qt6 COMPONENTS Multimedia REQUIRED)
+        SET (HATNUISE_VOICE_ENABLED ON)
+    ELSE ()
+        MESSAGE(STATUS "hatnuise: voice message glue disabled, it needs the hatnmedia target and UISE_DESKTOP_MULTIMEDIA (currently '${UISE_DESKTOP_MULTIMEDIA}')")
+    ENDIF ()
+ENDIF ()
+
 SET (HEADERS
     include/hatnuise/hatnuise.h
     include/hatnuise/string.h
@@ -43,11 +59,28 @@ SET (SOURCES
     src/objectpanel.cpp
 )
 
+IF (HATNUISE_VOICE_ENABLED)
+    LIST (APPEND HEADERS
+        include/hatnuise/voiceplaybackengine.h
+    )
+    LIST (APPEND SOURCES
+        src/voiceplaybackengine.cpp
+    )
+ENDIF ()
+
 ADD_LIBRARY(${PROJECT_NAME} SHARED ${HEADERS} ${SOURCES})
 TARGET_COMPILE_DEFINITIONS(${PROJECT_NAME} PRIVATE -DHATN_UISE_BUILD)
 
 TARGET_LINK_LIBRARIES(${PROJECT_NAME} PUBLIC Qt6::Core Qt6::Widgets hatnclientserver hatnclientapp uisedesktop)
 TARGET_INCLUDE_DIRECTORIES(${PROJECT_NAME} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
+
+# hatnmedia is PUBLIC because the voice headers expose hatn media types to the caller; Qt Multimedia
+# stays PRIVATE, no hatnuise header includes a Qt Multimedia header. HATN_UISE_VOICE is PUBLIC so a
+# consumer can compile its own voice code conditionally.
+IF (HATNUISE_VOICE_ENABLED)
+    TARGET_LINK_LIBRARIES(${PROJECT_NAME} PUBLIC hatnmedia PRIVATE Qt6::Multimedia)
+    TARGET_COMPILE_DEFINITIONS(${PROJECT_NAME} PUBLIC -DHATN_UISE_VOICE)
+ENDIF ()
 
 IF (INSTALL_DEV)
     INSTALL(TARGETS ${PROJECT_NAME}
