@@ -142,9 +142,14 @@ class HATN_UISE_EXPORT VoiceRecorderEngine : public QObject
         /**
          * @brief Ask for the permission if it has not been given, and tell the outcome.
          *
-         * On macOS the application needs NSMicrophoneUsageDescription in its Info.plist, or the
-         * system ends the process at the first use of the microphone. `done` is called on the GUI
-         * thread, possibly at once.
+         * `done` is called on the GUI thread, at most once, and never from inside this call: even an
+         * answer that is already known is posted. An answer that arrives after the engine is gone is
+         * dropped. See requestMicrophonePermission() in hatnuise/microphonepermission.h, which this
+         * is a thin wrapper over.
+         *
+         * On macOS the application needs NSMicrophoneUsageDescription, in the Info.plist of its
+         * bundle or in the __TEXT,__info_plist section of a plain executable, or the system ends the
+         * process at the first use of the microphone.
          */
         void requestPermission(std::function<void(bool)> done);
 

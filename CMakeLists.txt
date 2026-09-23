@@ -1,6 +1,13 @@
 CMAKE_MINIMUM_REQUIRED (VERSION 3.16)
 PROJECT(hatnuise VERSION 0.1.1 LANGUAGES CXX)
 
+# Objective-C++ for src/microphonepermission_mac.mm (AVFoundation). Enabled here rather than in the
+# LANGUAGES list of PROJECT() above, which would probe for an ObjC++ compiler on every platform.
+# Same pattern as whitemdesktop/CMakeLists.txt for its own _mac.mm files.
+IF (APPLE)
+    ENABLE_LANGUAGE(OBJCXX)
+ENDIF ()
+
 SET(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 SET(CMAKE_AUTOMOC ON)
@@ -47,6 +54,7 @@ SET (HEADERS
     include/hatnuise/hatnuise.h
     include/hatnuise/string.h
     include/hatnuise/desktoperror.h
+    include/hatnuise/microphonepermission.h
     include/hatnuise/uisehatnbridge.h
     include/hatnuise/uisehatneventdispatcher.h
     include/hatnuise/objectpanel.h
@@ -59,6 +67,18 @@ SET (SOURCES
     src/uisehatneventdispatcher.cpp
     src/objectpanel.cpp
 )
+
+# Microphone permission. Deliberately outside the voice block below: it needs neither hatnmedia nor
+# Qt Multimedia, and audio settings pages that only test a microphone need the same answer as the
+# voice recorder. One implementation per platform chosen by file, as whitemdesktop chooses
+# src/osnotificationsettings{_mac.mm,_win.cpp,.cpp}.
+#   Apple -> AVFoundation directly; Qt's QMicrophonePermission cannot be used, see the file itself.
+#   other -> QMicrophonePermission.
+IF (APPLE)
+    LIST (APPEND SOURCES src/microphonepermission_mac.mm)
+ELSE ()
+    LIST (APPEND SOURCES src/microphonepermission.cpp)
+ENDIF ()
 
 IF (HATNUISE_VOICE_ENABLED)
     LIST (APPEND HEADERS
@@ -77,6 +97,13 @@ TARGET_COMPILE_DEFINITIONS(${PROJECT_NAME} PRIVATE -DHATN_UISE_BUILD)
 
 TARGET_LINK_LIBRARIES(${PROJECT_NAME} PUBLIC Qt6::Core Qt6::Widgets hatnclientserver hatnclientapp uisedesktop)
 TARGET_INCLUDE_DIRECTORIES(${PROJECT_NAME} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
+
+# AVFoundation for src/microphonepermission_mac.mm, Foundation for its NSString and blocks.
+IF (APPLE)
+    FIND_LIBRARY(AVFOUNDATION_FRAMEWORK AVFoundation REQUIRED)
+    FIND_LIBRARY(FOUNDATION_FRAMEWORK Foundation REQUIRED)
+    TARGET_LINK_LIBRARIES(${PROJECT_NAME} PRIVATE ${AVFOUNDATION_FRAMEWORK} ${FOUNDATION_FRAMEWORK})
+ENDIF ()
 
 # hatnmedia is PUBLIC because the voice headers expose hatn media types to the caller; Qt Multimedia
 # stays PRIVATE, no hatnuise header includes a Qt Multimedia header. HATN_UISE_VOICE is PUBLIC so a

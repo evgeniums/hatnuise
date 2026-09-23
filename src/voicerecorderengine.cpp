@@ -31,7 +31,6 @@
 #include <QIODevice>
 #include <QMediaDevices>
 #include <QMetaObject>
-#include <QPermissions>
 #include <QPointer>
 #include <QTimer>
 
@@ -48,6 +47,7 @@
 #include <hatn/media/voicerecorder.h>
 #include <hatn/media/waveformextractor.h>
 
+#include <hatnuise/microphonepermission.h>
 #include <hatnuise/voiceplaybackengine.h>
 #include <hatnuise/voicerecorderengine.h>
 
@@ -225,6 +225,12 @@ class VoiceRecorderEngine_p
         uint32_t timerId=0;
         bool timerInstalled=false;
         std::atomic<bool> workerFailed{false};
+
+        //! Cleared by ~VoiceRecorderEngine. A permission answer of the system may land after the engine
+        //! is gone -- the flag is shared with that callback, which drops the answer instead of calling
+        //! back into what asked for it. It stands in for the context object of
+        //! QCoreApplication::requestPermission(), which is not used any more.
+        std::shared_ptr<std::atomic<bool>> alive=std::make_shared<std::atomic<bool>>(true);
 
         //! Bumped whenever the recording changes hands, so that a failure that was queued for the GUI
         //! thread by the worker or by the microphone is not blamed on what came after it.
@@ -1132,6 +1138,7 @@ VoiceRecorderEngine::VoiceRecorderEngine(
 
 VoiceRecorderEngine::~VoiceRecorderEngine()
 {
+    pimpl->alive->store(false);
     pimpl->shutdown();
 }
 
@@ -1153,57 +1160,31 @@ bool VoiceRecorderEngine::hasInputDevice() noexcept
 
 bool VoiceRecorderEngine::isPermissionGranted()
 {
-    auto* app=QCoreApplication::instance();
-    if (app==nullptr)
-    {
-        return false;
-    }
-    return app->checkPermission(QMicrophonePermission{})==Qt::PermissionStatus::Granted;
+    return microphonePermissionGranted();
 }
 
 //---------------------------------------------------------------
 
 void VoiceRecorderEngine::requestPermission(std::function<void(bool)> done)
 {
-    auto* app=QCoreApplication::instance();
-    if (app==nullptr)
-    {
-        if (done)
+    // The answer may come long after the press that asked for it, and the caller's callback usually
+    // holds the caller's own widgets. The engine belongs to that caller, so an engine that is gone
+    // means a caller that is gone: the answer is dropped. Checked after the hop to the GUI thread
+    // that requestMicrophonePermission() promises, so nothing races with the destructor.
+    auto alive=pimpl->alive;
+    requestMicrophonePermission(
+        [alive,done=std::move(done)](bool granted)
         {
-            done(false);
-        }
-        return;
-    }
-
-    QMicrophonePermission permission;
-    switch (app->checkPermission(permission))
-    {
-        case Qt::PermissionStatus::Granted:
+            if (!alive->load())
+            {
+                return;
+            }
             if (done)
             {
-                done(true);
+                done(granted);
             }
-            return;
-
-        case Qt::PermissionStatus::Denied:
-            // asking again does nothing: only the system settings can change it
-            if (done)
-            {
-                done(false);
-            }
-            return;
-
-        case Qt::PermissionStatus::Undetermined:
-            break;
-    }
-
-    app->requestPermission(permission,this,[done](const QPermission& result)
-    {
-        if (done)
-        {
-            done(result.status()==Qt::PermissionStatus::Granted);
         }
-    });
+    );
 }
 
 //---------------------------------------------------------------
