@@ -127,7 +127,7 @@ class HATN_UISE_EXPORT VoicePlaybackEngine : public UISE_DESKTOP_NAMESPACE::Audi
          * An empty id, or one that is not among the devices any more, means the default output. It
          * takes effect at once, and a message that is playing goes on from the sink's next buffer.
          */
-        void setOutputDevice(const QByteArray& id);
+        void setOutputDevice(const QByteArray& id) override;
 
         QByteArray outputDevice() const;
 
