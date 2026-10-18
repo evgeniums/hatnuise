@@ -32,6 +32,11 @@ HATN_UISE_NAMESPACE_BEGIN
  *
  * Where the platform has no such permission this is true.
  *
+ * On Windows the answer is read from the privacy switches of the system (Settings > Privacy >
+ * Microphone: the machine and user switches, "Let desktop apps access your microphone" and the group
+ * policy). A desktop application cannot ask for the permission there, only the user can grant it,
+ * see openMicrophonePrivacySettings().
+ *
  * On macOS the answer comes from a status this process has cached: a permission that was changed
  * elsewhere while the application runs is seen only after requestMicrophonePermission(), which goes
  * back to the system for it.
@@ -44,6 +49,9 @@ HATN_UISE_EXPORT bool microphonePermissionGranted();
  * `done` is called on the GUI thread, at most once, and never from inside this call: even an answer
  * that is already known is posted. That is deliberate — a caller may be tearing down the widget it
  * asked from, and a callback that lands in the middle of that is a trap.
+ *
+ * On Windows there is nothing to ask: the answer is the state of the privacy switches, and `done(false)`
+ * means the user has to turn the microphone on in Settings.
  *
  * On macOS the system dialog appears here, and only while the system has no answer yet; afterwards
  * the answer comes back without one. The system is asked even when the cached status says denied,

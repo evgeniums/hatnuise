@@ -73,7 +73,7 @@ SET (SOURCES
 # voice recorder. One implementation per platform chosen by file, as whitemdesktop chooses
 # src/osnotificationsettings{_mac.mm,_win.cpp,.cpp}.
 #   Apple -> AVFoundation directly; Qt's QMicrophonePermission cannot be used, see the file itself.
-#   other -> QMicrophonePermission.
+#   other -> QMicrophonePermission, plus on Windows the privacy switches of the system, which Qt ignores.
 IF (APPLE)
     LIST (APPEND SOURCES src/microphonepermission_mac.mm)
 ELSE ()
@@ -97,6 +97,11 @@ TARGET_COMPILE_DEFINITIONS(${PROJECT_NAME} PRIVATE -DHATN_UISE_BUILD)
 
 TARGET_LINK_LIBRARIES(${PROJECT_NAME} PUBLIC Qt6::Core Qt6::Widgets hatnclientserver hatnclientapp uisedesktop)
 TARGET_INCLUDE_DIRECTORIES(${PROJECT_NAME} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
+
+# The registry (RegGetValueW) for the microphone consent switches read by src/microphonepermission.cpp.
+IF (WIN32)
+    TARGET_LINK_LIBRARIES(${PROJECT_NAME} PRIVATE advapi32)
+ENDIF ()
 
 # AVFoundation for src/microphonepermission_mac.mm, Foundation for its NSString and blocks.
 IF (APPLE)
