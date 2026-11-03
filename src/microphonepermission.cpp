@@ -82,12 +82,27 @@ void postToGui(std::function<void(bool)> done, bool granted)
 
 #ifdef Q_OS_WIN
 
+//! RegGetValueW on the 64-bit view of the registry, also from a 32-bit build.
+//! (RRF_SUBKEY_WOW6464KEY is declared only for _WIN32_WINNT >= 0x0602, hatn builds with 0x0600.)
+LONG getRegValue64(HKEY root, const wchar_t* subKey, const wchar_t* name, DWORD flags, void* data, DWORD* size)
+{
+    HKEY key=nullptr;
+    LONG rc=RegOpenKeyExW(root,subKey,0,KEY_QUERY_VALUE|KEY_WOW64_64KEY,&key);
+    if (rc!=ERROR_SUCCESS)
+    {
+        return rc;
+    }
+    rc=RegGetValueW(key,nullptr,name,flags,nullptr,data,size);
+    RegCloseKey(key);
+    return rc;
+}
+
 //! Whether the REG_SZ value `name` under `subKey` of `root` exists and equals "Deny".
 bool consentValueIsDeny(HKEY root, const wchar_t* subKey, const wchar_t* name)
 {
     wchar_t buf[32]={};
     DWORD size=sizeof(buf)-sizeof(wchar_t); // keep room for the terminator RegGetValueW may not add
-    const LONG rc=RegGetValueW(root,subKey,name,RRF_RT_REG_SZ|RRF_SUBKEY_WOW64_64KEY,nullptr,buf,&size);
+    const LONG rc=getRegValue64(root,subKey,name,RRF_RT_REG_SZ,buf,&size);
     return rc==ERROR_SUCCESS && lstrcmpiW(buf,L"Deny")==0;
 }
 
@@ -118,8 +133,8 @@ bool windowsMicrophoneAllowed()
 
     DWORD policy=0;
     DWORD size=sizeof(policy);
-    const LONG rc=RegGetValueW(HKEY_LOCAL_MACHINE,kPolicy,L"LetAppsAccessMicrophone",
-                               RRF_RT_REG_DWORD|RRF_SUBKEY_WOW64_64KEY,nullptr,&policy,&size);
+    const LONG rc=getRegValue64(HKEY_LOCAL_MACHINE,kPolicy,L"LetAppsAccessMicrophone",
+                                RRF_RT_REG_DWORD,&policy,&size);
     if (rc==ERROR_SUCCESS && policy==2)
     {
         return false;
